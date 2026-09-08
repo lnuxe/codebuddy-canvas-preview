@@ -1,0 +1,20 @@
+---
+description: Git 提交必须用 GitHub 名称 lnuxe，禁止本机用户名
+alwaysApply: true
+---
+
+# Git 作者用 GitHub 名称
+
+本仓库提交的 Author / Committer 必须是 `lnuxe <lnuxe@users.noreply.github.com>`。
+
+禁止把本机用户名或公司邮箱写进提交。不要改 `git config`；用环境变量覆盖后再 `git commit`：
+
+```bash
+GIT_AUTHOR_NAME=lnuxe \
+GIT_AUTHOR_EMAIL=lnuxe@users.noreply.github.com \
+GIT_COMMITTER_NAME=lnuxe \
+GIT_COMMITTER_EMAIL=lnuxe@users.noreply.github.com \
+git commit ...
+```
+
+提交后检查 `git log -1 --format='%an <%ae>'`，确认是 `lnuxe` 再推。
