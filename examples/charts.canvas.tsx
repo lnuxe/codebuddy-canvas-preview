@@ -9,18 +9,27 @@ import {
   LineChart,
   PieChart,
   Stack,
+  Stat,
   Text,
 } from "cursor/canvas";
 
 export default function ChartKitchenSink() {
   return (
-    <Stack gap={24} style={{ padding: 24 }}>
-      <H1>图表预览</H1>
-      <Text>柱状 / 折线 / 饼图，对齐 canvas SDK 的 categories + series API。</Text>
+    <Stack gap={24}>
+      <Stack gap={8}>
+        <H1>图表预览</H1>
+        <Text tone="secondary">柱状 / 折线 / 饼图，对齐 canvas SDK 的 categories + series API。</Text>
+      </Stack>
+
+      <Grid columns={3} gap={8}>
+        <Stat value="160" label="周五请求" />
+        <Stat value="90" label="p95 峰值" tone="info" />
+        <Stat value="20" label="失败" tone="danger" />
+      </Grid>
 
       <H2>分组柱状图</H2>
       <Card>
-        <CardHeader title="请求量" />
+        <CardHeader>请求量</CardHeader>
         <CardBody>
           <BarChart
             categories={["Mon", "Tue", "Wed", "Thu", "Fri"]}
@@ -28,15 +37,14 @@ export default function ChartKitchenSink() {
               { name: "IDE", data: [120, 90, 150, 130, 160] },
               { name: "CLI", data: [30, 40, 25, 35, 28] },
             ]}
-            valueSuffix=""
-            height={220}
+            height={240}
           />
         </CardBody>
       </Card>
 
       <Grid columns={2} gap={16}>
         <Card>
-          <CardHeader title="堆叠 + 参考线" />
+          <CardHeader>堆叠 + 参考线</CardHeader>
           <CardBody>
             <BarChart
               categories={["Q1", "Q2", "Q3", "Q4"]}
@@ -50,7 +58,7 @@ export default function ChartKitchenSink() {
           </CardBody>
         </Card>
         <Card>
-          <CardHeader title="折线面积" />
+          <CardHeader>折线面积</CardHeader>
           <CardBody>
             <LineChart
               categories={["Jan", "Feb", "Mar", "Apr"]}

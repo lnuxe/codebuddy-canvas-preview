@@ -11,7 +11,7 @@ CodeBuddy CN / VS Code 扩展：在**左侧边栏**预览 `.canvas.tsx`，包含
 3. 或命令行：
 
 ```bash
-"/Applications/CodeBuddy CN.app/Contents/Resources/app/bin/code" --install-extension canvas-preview-0.2.0.vsix
+"/Applications/CodeBuddy CN.app/Contents/Resources/app/bin/code" --install-extension canvas-preview-0.3.0.vsix
 ```
 
 安装后执行 **重新加载窗口**。本地打包：`npm install && npx @vscode/vsce package`
@@ -23,7 +23,7 @@ CodeBuddy CN / VS Code 扩展：在**左侧边栏**预览 `.canvas.tsx`，包含
 - `Cmd+Option+C`
 - 图表示例：`examples/charts.canvas.tsx`
 
-新文件建议写到 `{工作区}/canvases/` 或 `~/.codebuddy/canvases/`。
+侧边栏预览使用与 canvas SDK 相同的字号、间距、卡片和图表（nice scale、hover tooltip）。新文件建议写到 `{工作区}/canvases/` 或 `~/.codebuddy/canvases/`。
 
 ## 共享（不需要自建服务器）
 
@@ -32,8 +32,6 @@ CodeBuddy CN / VS Code 扩展：在**左侧边栏**预览 `.canvas.tsx`，包含
 - **导出可分享 HTML**：生成单文件，用浏览器打开，或放到 GitHub Pages / COS / 任意静态托管
 - **复制可分享 HTML**：贴进仓库或文档
 
-多人同时编辑同一份预览、带权限的在线链接，才需要单独的服务端（WebSocket 或对象存储 + 鉴权）。本仓库默认不做那一层。
-
 ## 开发
 
 ```bash
@@ -41,3 +39,5 @@ npm install
 ```
 
 修改 `runtime/canvas-sdk.jsx` 或 `extension.js` 后重载窗口。
+
+未做事项见 [TODO.md](TODO.md)。SDK 组件面已对齐；主题叠加、状态持久化、`useCanvasAction`、Diff 语法高亮仍未接。**在线协作链接**需要服务端，先不做。

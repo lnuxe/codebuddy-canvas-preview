@@ -2,7 +2,7 @@
   "name": "canvas-preview",
   "displayName": "Canvas 预览",
   "description": "在 CodeBuddy CN 侧边栏预览 .canvas.tsx 文件",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "lnuxe",
   "license": "MIT",
   "repository": {

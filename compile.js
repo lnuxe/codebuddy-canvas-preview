@@ -82,8 +82,14 @@ function previewHtml(scriptSrc, theme, cspSource) {
 <meta charset="UTF-8" />
 ${csp}
 <style>
-  html, body, #root { margin: 0; padding: 0; min-height: 100%; }
-  body { background: ${theme === "light" ? "#FFFFFF" : "#181818"}; color: ${theme === "light" ? "#141414" : "#F0F0F0"}; }
+  html, body, #root { margin: 0; padding: 0; min-height: 100%; width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden; }
+  *, *::before, *::after { box-sizing: border-box; }
+  body {
+    background: ${theme === "light" ? "#FCFCFC" : "#181818"};
+    color: ${theme === "light" ? "#141414" : "#F0F0F0"};
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
 </style>
 </head>
 <body>
@@ -108,8 +114,14 @@ function standaloneHtml(js, theme) {
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Canvas</title>
 <style>
-  html, body, #root { margin: 0; padding: 0; min-height: 100%; }
-  body { background: ${theme === "light" ? "#FFFFFF" : "#181818"}; color: ${theme === "light" ? "#141414" : "#F0F0F0"}; }
+  html, body, #root { margin: 0; padding: 0; min-height: 100%; width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden; }
+  *, *::before, *::after { box-sizing: border-box; }
+  body {
+    background: ${theme === "light" ? "#FCFCFC" : "#181818"};
+    color: ${theme === "light" ? "#141414" : "#F0F0F0"};
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
 </style>
 </head>
 <body>
