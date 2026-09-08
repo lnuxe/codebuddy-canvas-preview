@@ -1,0 +1,151 @@
+{
+  "name": "canvas-preview",
+  "displayName": "Canvas 预览",
+  "description": "在 CodeBuddy CN 侧边栏预览 .canvas.tsx 文件",
+  "version": "0.1.2",
+  "publisher": "lnuxe",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lnuxe/codebuddy-canvas-preview.git"
+  },
+  "bugs": {
+    "url": "https://github.com/lnuxe/codebuddy-canvas-preview/issues"
+  },
+  "homepage": "https://github.com/lnuxe/codebuddy-canvas-preview#readme",
+  "icon": "media/icon.svg",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": ["Other", "Visualization"],
+  "keywords": ["codebuddy", "canvas", "preview", "tsx", "webview"],
+  "activationEvents": [
+    "onStartupFinished",
+    "onLanguage:typescriptreact",
+    "onCommand:canvasPreview.open",
+    "onCommand:canvasPreview.openToSide",
+    "onCommand:canvasPreview.openSidebar",
+    "onCommand:canvasPreview.pick",
+    "onView:canvasPreview.sidebar",
+    "onView:canvasPreview.files",
+    "onCustomEditor:canvasPreview.editor"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "canvasPreview",
+          "title": "Canvas 预览",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "canvasPreview": [
+        {
+          "type": "webview",
+          "id": "canvasPreview.sidebar",
+          "name": "预览",
+          "retainContextWhenHidden": true
+        },
+        {
+          "id": "canvasPreview.files",
+          "name": "Canvas 文件"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "canvasPreview.openSidebar",
+        "title": "在侧边栏打开 Canvas 预览",
+        "category": "Canvas 预览",
+        "icon": "$(layout-sidebar-left)"
+      },
+      {
+        "command": "canvasPreview.openToSide",
+        "title": "在编辑器侧边打开预览",
+        "category": "Canvas 预览",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "canvasPreview.open",
+        "title": "打开 Canvas 预览",
+        "category": "Canvas 预览"
+      },
+      {
+        "command": "canvasPreview.pick",
+        "title": "选择并预览 Canvas 文件",
+        "category": "Canvas 预览"
+      },
+      {
+        "command": "canvasPreview.refreshFiles",
+        "title": "刷新文件列表",
+        "category": "Canvas 预览",
+        "icon": "$(refresh)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "canvasPreview.openSidebar",
+        "key": "ctrl+alt+c",
+        "mac": "cmd+alt+c"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "canvasPreview.pick",
+          "when": "view == canvasPreview.sidebar || view == canvasPreview.files",
+          "group": "navigation"
+        },
+        {
+          "command": "canvasPreview.refreshFiles",
+          "when": "view == canvasPreview.files",
+          "group": "navigation"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "canvasPreview.openSidebar",
+          "when": "editorLangId == typescriptreact || editorLangId == typescript || editorLangId == javascriptreact",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "canvasPreview.openSidebar",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "canvasPreview.openSidebar",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        { "command": "canvasPreview.openSidebar" },
+        { "command": "canvasPreview.openToSide" },
+        { "command": "canvasPreview.open" },
+        { "command": "canvasPreview.pick" }
+      ]
+    },
+    "customEditors": [
+      {
+        "viewType": "canvasPreview.editor",
+        "displayName": "Canvas 预览",
+        "selector": [
+          { "filenamePattern": "*.canvas.tsx" },
+          { "filenamePattern": "**/*.canvas.tsx" }
+        ],
+        "priority": "default"
+      }
+    ]
+  },
+  "dependencies": {
+    "esbuild": "^0.28.2",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  }
+}
