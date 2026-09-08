@@ -3,7 +3,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const crypto = require("crypto");
-const { compileCanvas, previewHtml } = require("./compile");
+const { compileCanvas, previewHtml, standaloneHtml } = require("./compile");
 
 const VIEW_TYPE = "canvasPreview.panel";
 const SIDEBAR_VIEW = "canvasPreview.sidebar";
@@ -301,6 +301,33 @@ function activate(context) {
       await sidebar.showPath(target.fsPath);
     }),
     vscode.commands.registerCommand("canvasPreview.refreshFiles", () => files.refresh()),
+    vscode.commands.registerCommand("canvasPreview.exportHtml", async (uri) => {
+      const target = await resolveTarget(uri);
+      if (!target) return;
+      const js = await compileCanvas(target.fsPath);
+      const html = standaloneHtml(js, themeKind());
+      const defaultName = path.basename(target.fsPath, ".tsx") + ".html";
+      const save = await vscode.window.showSaveDialog({
+        defaultUri: vscode.Uri.file(path.join(path.dirname(target.fsPath), defaultName)),
+        filters: { HTML: ["html"] },
+      });
+      if (!save) return;
+      fs.writeFileSync(save.fsPath, html, "utf8");
+      const open = await vscode.window.showInformationMessage(
+        "已导出可分享 HTML。发给别人用浏览器打开即可，不需要自建服务器。",
+        "打开文件",
+        "在浏览器打开"
+      );
+      if (open === "打开文件") await vscode.window.showTextDocument(save);
+      if (open === "在浏览器打开") await vscode.env.openExternal(save);
+    }),
+    vscode.commands.registerCommand("canvasPreview.copyHtml", async (uri) => {
+      const target = await resolveTarget(uri);
+      if (!target) return;
+      const js = await compileCanvas(target.fsPath);
+      await vscode.env.clipboard.writeText(standaloneHtml(js, themeKind()));
+      vscode.window.showInformationMessage("已复制完整 HTML。可贴到仓库、对象存储或任意静态托管。");
+    }),
     vscode.workspace.onDidSaveTextDocument((doc) => {
       if (!isCanvasFile(doc.fileName)) return;
       if (sidebar.currentPath === doc.fileName) sidebar.showPath(doc.fileName);

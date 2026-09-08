@@ -2,7 +2,7 @@
   "name": "canvas-preview",
   "displayName": "Canvas 预览",
   "description": "在 CodeBuddy CN 侧边栏预览 .canvas.tsx 文件",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "publisher": "lnuxe",
   "license": "MIT",
   "repository": {
@@ -25,7 +25,8 @@
     "onCommand:canvasPreview.open",
     "onCommand:canvasPreview.openToSide",
     "onCommand:canvasPreview.openSidebar",
-    "onCommand:canvasPreview.pick",
+    "onCommand:canvasPreview.exportHtml",
+    "onCommand:canvasPreview.copyHtml",
     "onView:canvasPreview.sidebar",
     "onView:canvasPreview.files",
     "onCustomEditor:canvasPreview.editor"
@@ -83,6 +84,17 @@
         "title": "刷新文件列表",
         "category": "Canvas 预览",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "canvasPreview.exportHtml",
+        "title": "导出可分享 HTML",
+        "category": "Canvas 预览",
+        "icon": "$(export)"
+      },
+      {
+        "command": "canvasPreview.copyHtml",
+        "title": "复制可分享 HTML",
+        "category": "Canvas 预览"
       }
     ],
     "keybindings": [
@@ -102,6 +114,11 @@
         {
           "command": "canvasPreview.refreshFiles",
           "when": "view == canvasPreview.files",
+          "group": "navigation"
+        },
+        {
+          "command": "canvasPreview.exportHtml",
+          "when": "view == canvasPreview.sidebar || view == canvasPreview.files",
           "group": "navigation"
         }
       ],
@@ -128,7 +145,9 @@
         { "command": "canvasPreview.openSidebar" },
         { "command": "canvasPreview.openToSide" },
         { "command": "canvasPreview.open" },
-        { "command": "canvasPreview.pick" }
+        { "command": "canvasPreview.pick" },
+        { "command": "canvasPreview.exportHtml" },
+        { "command": "canvasPreview.copyHtml" }
       ]
     },
     "customEditors": [

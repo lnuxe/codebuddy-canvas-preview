@@ -99,4 +99,24 @@ ${csp}
 </html>`;
 }
 
-module.exports = { compileCanvas, previewHtml };
+function standaloneHtml(js, theme) {
+  const safe = String(js).replace(/</g, "\\u003c");
+  return `<!DOCTYPE html>
+<html data-theme="${theme}">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Canvas</title>
+<style>
+  html, body, #root { margin: 0; padding: 0; min-height: 100%; }
+  body { background: ${theme === "light" ? "#FFFFFF" : "#181818"}; color: ${theme === "light" ? "#141414" : "#F0F0F0"}; }
+</style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>${safe}</script>
+</body>
+</html>`;
+}
+
+module.exports = { compileCanvas, previewHtml, standaloneHtml };

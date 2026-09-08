@@ -853,114 +853,512 @@ export function Toggle({ checked, onChange }) {
   );
 }
 
-function ChartFrame({ title, children, style }) {
-  const theme = useHostTheme();
+export const chartColorSequence = [
+  "#2E79B5E0",
+  "#1F8A65E8",
+  "#F0A040E0",
+  "#7B64B8F0",
+  "#2A9A8AE0",
+  "#C85898E0",
+  "#E8C030E0",
+  "#C04848E0",
+  "#5A6CC0F0",
+];
+
+function toneColor(theme, tone, index) {
+  const map = {
+    success: theme.category.green,
+    danger: theme.category.red,
+    warning: theme.category.yellow,
+    info: theme.category.blue,
+    neutral: theme.category.gray,
+  };
+  if (tone && map[tone]) return map[tone];
+  return chartColorSequence[index % chartColorSequence.length];
+}
+
+function formatVal(n, prefix = "", suffix = "") {
+  if (!Number.isFinite(n)) return "";
+  const abs = Math.abs(n);
+  const text =
+    abs >= 1000 && abs % 1 === 0
+      ? n.toLocaleString()
+      : abs >= 10
+        ? String(Math.round(n * 10) / 10)
+        : String(Math.round(n * 100) / 100);
+  return `${prefix}${text}${suffix}`;
+}
+
+function resolveXY(props) {
+  if (props.categories && props.series) {
+    return {
+      categories: props.categories,
+      series: props.series.map((s) => ({
+        name: s.name || "series",
+        data: (s.data || []).map((n) => Number(n) || 0),
+        tone: s.tone,
+      })),
+    };
+  }
+  const rows = Array.isArray(props.data) ? props.data : [];
+  const categories = rows.map((r) => String(r.label ?? r.name ?? r.x ?? ""));
+  if (props.series && Array.isArray(props.series) && typeof props.series[0] === "object" && props.series[0].data) {
+    return { categories, series: props.series };
+  }
+  const keys = rows[0]
+    ? Object.keys(rows[0]).filter((k) => k !== "label" && k !== "name" && k !== "x")
+    : ["value"];
+  return {
+    categories,
+    series: keys.map((k) => ({
+      name: k,
+      data: rows.map((r) => Number(r[k] ?? r.value ?? 0) || 0),
+    })),
+  };
+}
+
+function valueDomain(series, { beginAtZero = true, yMin, yMax, stacked, normalized, referenceLines }) {
+  if (normalized) return { min: 0, max: 100 };
+  let min = Infinity;
+  let max = -Infinity;
+  const len = Math.max(0, ...series.map((s) => s.data.length));
+  if (stacked) {
+    for (let i = 0; i < len; i++) {
+      const sum = series.reduce((acc, s) => acc + (Number(s.data[i]) || 0), 0);
+      min = Math.min(min, 0, sum);
+      max = Math.max(max, sum);
+    }
+  } else {
+    for (const s of series) {
+      for (const n of s.data) {
+        min = Math.min(min, n);
+        max = Math.max(max, n);
+      }
+    }
+  }
+  if (referenceLines) {
+    for (const line of referenceLines) {
+      min = Math.min(min, Number(line.value) || 0);
+      max = Math.max(max, Number(line.value) || 0);
+    }
+  }
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    min = 0;
+    max = 1;
+  }
+  if (yMin != null) min = yMin;
+  else if (beginAtZero !== false) min = Math.min(0, min);
+  if (yMax != null) max = yMax;
+  if (max === min) max = min + 1;
+  return { min, max };
+}
+
+function Legend({ series, theme }) {
+  if (!series || series.length < 2) return null;
   return (
-    <div style={{ ...style }}>
-      {title ? (
-        <div style={{ fontSize: 12, color: theme.text.tertiary, marginBottom: 8 }}>
-          {title}
-        </div>
-      ) : null}
-      {children}
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 8 }}>
+      {series.map((s, i) => (
+        <span key={s.name} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: theme.text.secondary }}>
+          <span style={{ width: 8, height: 8, borderRadius: 2, background: toneColor(theme, s.tone, i) }} />
+          {s.name}
+        </span>
+      ))}
     </div>
   );
 }
 
-export function BarChart({ data = [], series, categories, height = 180, title, style }) {
+export function BarChart(props) {
   const theme = useHostTheme();
-  const points = Array.isArray(data) ? data : [];
-  const keys = series
-    ? series.map((s) => s.key || s.name)
-    : points[0]
-      ? Object.keys(points[0]).filter((k) => k !== "label" && k !== "name" && k !== "x")
-      : ["value"];
-  const max = Math.max(
-    1,
-    ...points.flatMap((p) => keys.map((k) => Number(p[k] ?? p.value ?? 0)))
-  );
+  const {
+    height = 220,
+    stacked = false,
+    horizontal = false,
+    normalized = false,
+    valueSuffix = "",
+    valuePrefix = "",
+    showValues,
+    beginAtZero = true,
+    yMin,
+    yMax,
+    referenceLines = [],
+    style,
+    title,
+  } = props;
+  const { categories, series } = resolveXY(props);
+  const n = categories.length || 1;
+  const stackOn = stacked || normalized;
+  const domain = valueDomain(series, { beginAtZero, yMin, yMax, stacked: stackOn, normalized, referenceLines });
+  const pad = { l: horizontal ? 88 : 36, r: 12, t: 12, b: horizontal ? 28 : 36 };
+  const W = 560;
+  const H = height;
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+  const autoLabels = showValues == null ? series.length === 1 && n <= 8 && !stackOn : !!showValues;
+  const groupW = pw / n;
+  const innerGap = 4;
+  const seriesN = Math.max(1, series.length);
+
+  function scale(v) {
+    return ((v - domain.min) / (domain.max - domain.min)) * (horizontal ? pw : ph);
+  }
+
+  const ticks = 4;
+  const tickVals = Array.from({ length: ticks + 1 }, (_, i) => domain.min + ((domain.max - domain.min) * i) / ticks);
+
   return (
-    <ChartFrame title={title} style={style}>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height }}>
-        {points.map((p, i) => (
-          <div key={i} style={{ flex: 1, display: "flex", gap: 2, alignItems: "flex-end", height: "100%" }}>
-            {keys.map((k, ki) => (
-              <div
-                key={k}
-                title={`${p.label || p.name || i}: ${p[k] ?? p.value}`}
-                style={{
-                  flex: 1,
-                  height: `${((Number(p[k] ?? p.value ?? 0) / max) * 100).toFixed(1)}%`,
-                  background: theme.category[usageColorSequence[ki]] || theme.accent.primary,
-                  borderRadius: 3,
-                }}
+    <div style={style}>
+      {title ? <div style={{ fontSize: 12, color: theme.text.tertiary, marginBottom: 8 }}>{title}</div> : null}
+      <Legend series={series} theme={theme} />
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: "block" }}>
+        {tickVals.map((tv, i) => {
+          const pos = horizontal ? pad.l + scale(tv) : pad.t + ph - scale(tv);
+          return (
+            <g key={i}>
+              <line
+                x1={horizontal ? pos : pad.l}
+                y1={horizontal ? pad.t : pos}
+                x2={horizontal ? pos : W - pad.r}
+                y2={horizontal ? H - pad.b : pos}
+                stroke={theme.stroke.tertiary}
               />
-            ))}
-          </div>
-        ))}
-      </div>
-    </ChartFrame>
-  );
-}
-
-export function LineChart({ data = [], height = 180, title, style }) {
-  const theme = useHostTheme();
-  const points = Array.isArray(data) ? data : [];
-  const vals = points.map((p) => Number(p.value ?? p.y ?? 0));
-  const max = Math.max(1, ...vals);
-  const w = 320;
-  const h = height;
-  const d = vals
-    .map((v, i) => {
-      const x = vals.length <= 1 ? 0 : (i / (vals.length - 1)) * w;
-      const y = h - (v / max) * h;
-      return `${i === 0 ? "M" : "L"}${x},${y}`;
-    })
-    .join(" ");
-  return (
-    <ChartFrame title={title} style={style}>
-      <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
-        <path d={d} fill="none" stroke={theme.accent.primary} strokeWidth="2" />
+              <text
+                x={horizontal ? pos : pad.l - 6}
+                y={horizontal ? H - pad.b + 14 : pos + 3}
+                textAnchor={horizontal ? "middle" : "end"}
+                fontSize="10"
+                fill={theme.text.quaternary}
+              >
+                {formatVal(tv, valuePrefix, normalized ? "%" : valueSuffix)}
+              </text>
+            </g>
+          );
+        })}
+        {categories.map((cat, ci) => {
+          const stacks = [];
+          let accPos = 0;
+          let accNeg = 0;
+          const bars = series.map((s, si) => {
+            let raw = Number(s.data[ci]) || 0;
+            if (normalized) {
+              const tot = series.reduce((a, x) => a + Math.abs(Number(x.data[ci]) || 0), 0) || 1;
+              raw = (raw / tot) * 100;
+            }
+            const color = series.length === 1 ? toneColor(theme, s.tone, ci) : toneColor(theme, s.tone, si);
+            if (stackOn) {
+              const start = raw >= 0 ? accPos : accNeg;
+              if (raw >= 0) accPos += raw;
+              else accNeg += raw;
+              return { raw, start, color, name: s.name };
+            }
+            return { raw, start: 0, color, name: s.name };
+          });
+          stacks.push(bars);
+          return (
+            <g key={cat + ci}>
+              {horizontal ? (
+                bars.map((b, si) => {
+                  const y = pad.t + ci * (ph / n) + (stackOn ? 4 : (ph / n) * (si / seriesN)) + 2;
+                  const bh = stackOn ? ph / n - 8 : Math.max(4, ph / n / seriesN - innerGap);
+                  const x0 = pad.l + scale(Math.min(b.start, b.start + b.raw));
+                  const bw = Math.abs(scale(b.start + b.raw) - scale(b.start));
+                  return (
+                    <g key={si}>
+                      <rect x={x0} y={y} width={Math.max(bw, 0)} height={bh} fill={b.color} rx="2">
+                        <title>{`${b.name} · ${cat}: ${formatVal(b.raw, valuePrefix, valueSuffix)}`}</title>
+                      </rect>
+                    </g>
+                  );
+                })
+              ) : (
+                bars.map((b, si) => {
+                  const x = pad.l + ci * groupW + (stackOn ? groupW * 0.18 : groupW * (si / seriesN) + groupW * 0.08);
+                  const bw = stackOn ? groupW * 0.64 : Math.max(4, groupW / seriesN - innerGap);
+                  const yVal = scale(b.start + b.raw);
+                  const y0 = pad.t + ph - scale(Math.max(b.start, b.start + b.raw));
+                  const bh = Math.abs(scale(b.start + b.raw) - scale(b.start));
+                  return (
+                    <g key={si}>
+                      <rect x={x} y={y0} width={bw} height={Math.max(bh, 0)} fill={b.color} rx="2">
+                        <title>{`${b.name} · ${cat}: ${formatVal(b.raw, valuePrefix, valueSuffix)}`}</title>
+                      </rect>
+                      {autoLabels ? (
+                        <text
+                          x={x + bw / 2}
+                          y={y0 - 4}
+                          textAnchor="middle"
+                          fontSize="10"
+                          fill={theme.text.secondary}
+                        >
+                          {formatVal(b.raw, valuePrefix, valueSuffix)}
+                        </text>
+                      ) : null}
+                    </g>
+                  );
+                })
+              )}
+              <text
+                x={horizontal ? 8 : pad.l + (ci + 0.5) * groupW}
+                y={horizontal ? pad.t + (ci + 0.5) * (ph / n) + 4 : H - 10}
+                textAnchor={horizontal ? "start" : "middle"}
+                fontSize="10"
+                fill={theme.text.tertiary}
+              >
+                {cat}
+              </text>
+            </g>
+          );
+        })}
+        {referenceLines.map((line, i) => {
+          const v = Number(line.value) || 0;
+          const pos = horizontal ? pad.l + scale(v) : pad.t + ph - scale(v);
+          const color = toneColor(theme, line.tone, i);
+          return (
+            <g key={`ref-${i}`}>
+              <line
+                x1={horizontal ? pos : pad.l}
+                y1={horizontal ? pad.t : pos}
+                x2={horizontal ? pos : W - pad.r}
+                y2={horizontal ? H - pad.b : pos}
+                stroke={color}
+                strokeDasharray="4 3"
+              />
+              {line.label ? (
+                <text
+                  x={horizontal ? pos + 4 : W - pad.r}
+                  y={horizontal ? pad.t + 12 : pos - 4}
+                  textAnchor="end"
+                  fontSize="10"
+                  fill={color}
+                >
+                  {line.label}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
       </svg>
-    </ChartFrame>
+    </div>
   );
 }
 
-export function PieChart({ data = [], height = 180, title, style }) {
+export function LineChart(props) {
   const theme = useHostTheme();
+  const {
+    height = 220,
+    fill = false,
+    valueSuffix = "",
+    valuePrefix = "",
+    showValues,
+    showHoverGuide = true,
+    beginAtZero = true,
+    yMin,
+    yMax,
+    referenceLines = [],
+    style,
+    title,
+  } = props;
+  const { categories, series } = resolveXY(props);
+  const n = Math.max(1, categories.length);
+  const domain = valueDomain(series, { beginAtZero, yMin, yMax, referenceLines });
+  const pad = { l: 40, r: 12, t: 12, b: 36 };
+  const W = 560;
+  const H = height;
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+  const [hover, setHover] = useState(null);
+  const autoLabels = showValues == null ? n <= 20 && series.length === 1 : !!showValues;
+
+  function xAt(i) {
+    return pad.l + (n <= 1 ? pw / 2 : (i / (n - 1)) * pw);
+  }
+  function yAt(v) {
+    return pad.t + ph - ((v - domain.min) / (domain.max - domain.min)) * ph;
+  }
+
+  const ticks = 4;
+  const tickVals = Array.from({ length: ticks + 1 }, (_, i) => domain.min + ((domain.max - domain.min) * i) / ticks);
+
+  return (
+    <div style={style}>
+      {title ? <div style={{ fontSize: 12, color: theme.text.tertiary, marginBottom: 8 }}>{title}</div> : null}
+      <Legend series={series} theme={theme} />
+      <svg
+        width="100%"
+        viewBox={`0 0 ${W} ${H}`}
+        style={{ display: "block" }}
+        onMouseLeave={() => setHover(null)}
+        onMouseMove={(e) => {
+          const box = e.currentTarget.getBoundingClientRect();
+          const x = ((e.clientX - box.left) / box.width) * W;
+          let best = 0;
+          let dist = Infinity;
+          for (let i = 0; i < n; i++) {
+            const d = Math.abs(xAt(i) - x);
+            if (d < dist) {
+              dist = d;
+              best = i;
+            }
+          }
+          setHover(best);
+        }}
+      >
+        {tickVals.map((tv, i) => {
+          const y = yAt(tv);
+          return (
+            <g key={i}>
+              <line x1={pad.l} y1={y} x2={W - pad.r} y2={y} stroke={theme.stroke.tertiary} />
+              <text x={pad.l - 6} y={y + 3} textAnchor="end" fontSize="10" fill={theme.text.quaternary}>
+                {formatVal(tv, valuePrefix, valueSuffix)}
+              </text>
+            </g>
+          );
+        })}
+        {series.map((s, si) => {
+          const color = toneColor(theme, s.tone, si);
+          const pts = s.data.map((v, i) => `${xAt(i)},${yAt(v)}`).join(" ");
+          const line = s.data.map((v, i) => `${i === 0 ? "M" : "L"}${xAt(i)},${yAt(v)}`).join(" ");
+          const area =
+            fill && s.data.length
+              ? `${line} L${xAt(s.data.length - 1)},${yAt(domain.min)} L${xAt(0)},${yAt(domain.min)} Z`
+              : null;
+          return (
+            <g key={s.name}>
+              {area ? <path d={area} fill={color} opacity="0.16" /> : null}
+              <path d={line} fill="none" stroke={color} strokeWidth="2" />
+              {s.data.map((v, i) => (
+                <circle key={i} cx={xAt(i)} cy={yAt(v)} r="3" fill={color}>
+                  <title>{`${s.name} · ${categories[i]}: ${formatVal(v, valuePrefix, valueSuffix)}`}</title>
+                </circle>
+              ))}
+              {autoLabels
+                ? s.data.map((v, i) => (
+                    <text key={`t${i}`} x={xAt(i)} y={yAt(v) - 8} textAnchor="middle" fontSize="10" fill={theme.text.secondary}>
+                      {formatVal(v, valuePrefix, valueSuffix)}
+                    </text>
+                  ))
+                : null}
+            </g>
+          );
+        })}
+        {showHoverGuide && hover != null ? (
+          <line x1={xAt(hover)} y1={pad.t} x2={xAt(hover)} y2={pad.t + ph} stroke={theme.stroke.secondary} />
+        ) : null}
+        {referenceLines.map((line, i) => {
+          const y = yAt(Number(line.value) || 0);
+          const color = toneColor(theme, line.tone, i);
+          return (
+            <g key={`ref-${i}`}>
+              <line x1={pad.l} y1={y} x2={W - pad.r} y2={y} stroke={color} strokeDasharray="4 3" />
+              {line.label ? (
+                <text x={W - pad.r} y={y - 4} textAnchor="end" fontSize="10" fill={color}>
+                  {line.label}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
+        {categories.map((cat, i) => (
+          <text key={cat + i} x={xAt(i)} y={H - 10} textAnchor="middle" fontSize="10" fill={theme.text.tertiary}>
+            {cat}
+          </text>
+        ))}
+      </svg>
+      {hover != null ? (
+        <div style={{ fontSize: 12, color: theme.text.secondary, marginTop: 6 }}>
+          {categories[hover]}
+          {series.map((s) => ` · ${s.name} ${formatVal(s.data[hover], valuePrefix, valueSuffix)}`).join("")}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function PieChart({ data = [], size = 200, donut = false, height, title, style }) {
+  const theme = useHostTheme();
+  const [hover, setHover] = useState(null);
   const points = Array.isArray(data) ? data : [];
   const total = points.reduce((s, p) => s + Number(p.value || 0), 0) || 1;
+  const dim = size || height || 200;
+  const cx = dim / 2 + 8;
+  const cy = dim / 2 + 8;
+  const r = dim / 2 - 8;
+  const inner = donut ? r * 0.58 : 0;
   let acc = 0;
-  const r = 70;
-  const c = 90;
-  const arcs = points.map((p, i) => {
-    const frac = Number(p.value || 0) / total;
+  const slices = points.map((p, i) => {
+    const value = Number(p.value || 0);
+    const frac = value / total;
     const a0 = acc * Math.PI * 2 - Math.PI / 2;
     acc += frac;
     const a1 = acc * Math.PI * 2 - Math.PI / 2;
-    const x0 = c + r * Math.cos(a0);
-    const y0 = c + r * Math.sin(a0);
-    const x1 = c + r * Math.cos(a1);
-    const y1 = c + r * Math.sin(a1);
     const large = frac > 0.5 ? 1 : 0;
-    return (
-      <path
-        key={i}
-        d={`M${c},${c} L${x0},${y0} A${r},${r} 0 ${large} 1 ${x1},${y1} Z`}
-        fill={theme.category[usageColorSequence[i % usageColorSequence.length]]}
-      />
-    );
+    const color = toneColor(theme, p.tone, i);
+    function pt(a, rad) {
+      return [cx + rad * Math.cos(a), cy + rad * Math.sin(a)];
+    }
+    const [x0, y0] = pt(a0, r);
+    const [x1, y1] = pt(a1, r);
+    let d;
+    if (donut) {
+      const [ix0, iy0] = pt(a0, inner);
+      const [ix1, iy1] = pt(a1, inner);
+      d = `M${x0},${y0} A${r},${r} 0 ${large} 1 ${x1},${y1} L${ix1},${iy1} A${inner},${inner} 0 ${large} 0 ${ix0},${iy0} Z`;
+    } else {
+      d = `M${cx},${cy} L${x0},${y0} A${r},${r} 0 ${large} 1 ${x1},${y1} Z`;
+    }
+    return { d, color, label: p.label, value, frac, i };
   });
+
   return (
-    <ChartFrame title={title} style={style}>
-      <svg width={height} height={height} viewBox="0 0 180 180">
-        {arcs}
-      </svg>
-    </ChartFrame>
+    <div style={style}>
+      {title ? <div style={{ fontSize: 12, color: theme.text.tertiary, marginBottom: 8 }}>{title}</div> : null}
+      <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+        <svg width={dim + 16} height={dim + 16} viewBox={`0 0 ${dim + 16} ${dim + 16}`}>
+          {slices.map((s) => (
+            <path
+              key={s.i}
+              d={s.d}
+              fill={s.color}
+              opacity={hover == null || hover === s.i ? 1 : 0.35}
+              transform={hover === s.i ? `translate(0,0)` : undefined}
+              onMouseEnter={() => setHover(s.i)}
+              onMouseLeave={() => setHover(null)}
+            >
+              <title>{`${s.label}: ${s.value} (${Math.round(s.frac * 100)}%)`}</title>
+            </path>
+          ))}
+          {donut ? (
+            <text x={cx} y={cy + 4} textAnchor="middle" fontSize="14" fontWeight="590" fill={theme.text.primary}>
+              {total}
+            </text>
+          ) : null}
+        </svg>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {slices.map((s) => (
+            <div
+              key={s.i}
+              onMouseEnter={() => setHover(s.i)}
+              onMouseLeave={() => setHover(null)}
+              style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: theme.text.secondary }}
+            >
+              <span style={{ width: 8, height: 8, borderRadius: 2, background: s.color }} />
+              {s.label} · {Math.round(s.frac * 100)}%
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
-export function DiffView({ lines = [] }) {
+export function DiffView({
+  lines = [],
+  path: filePath,
+  language,
+  showLineNumbers = true,
+  coloredLineNumbers = true,
+  showAccentStrip = true,
+  style,
+}) {
   const theme = useHostTheme();
   return (
     <pre
@@ -969,19 +1367,35 @@ export function DiffView({ lines = [] }) {
         fontSize: 12,
         fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
         overflow: "auto",
+        ...style,
       }}
     >
       {lines.map((line, i) => {
-        const t = line.type || (String(line).startsWith("+") ? "add" : String(line).startsWith("-") ? "del" : "ctx");
-        const bg =
-          t === "add" || t === "inserted"
-            ? theme.diff.insertedLine
-            : t === "del" || t === "removed"
-              ? theme.diff.removedLine
-              : "transparent";
+        const t = line.type || (String(line).startsWith("+") ? "added" : String(line).startsWith("-") ? "removed" : "unchanged");
+        const added = t === "added" || t === "add" || t === "inserted";
+        const removed = t === "removed" || t === "del" || t === "deleted";
+        const bg = added ? theme.diff.insertedLine : removed ? theme.diff.removedLine : "transparent";
+        const strip = added ? theme.diff.stripAdded : removed ? theme.diff.stripRemoved : "transparent";
+        const numColor = coloredLineNumbers
+          ? added
+            ? theme.category.green
+            : removed
+              ? theme.category.red
+              : theme.text.quaternary
+          : theme.text.quaternary;
         return (
-          <div key={i} style={{ background: bg, padding: "0 8px" }}>
-            {line.text || line.content || line}
+          <div key={i} style={{ display: "flex", background: bg }}>
+            {showAccentStrip ? (
+              <span style={{ width: 3, background: strip, flex: "0 0 3px" }} />
+            ) : null}
+            {showLineNumbers ? (
+              <span style={{ width: 36, textAlign: "right", padding: "0 8px", color: numColor, userSelect: "none" }}>
+                {line.lineNumber || i + 1}
+              </span>
+            ) : null}
+            <span style={{ padding: "0 8px", whiteSpace: "pre" }}>
+              {line.text || line.content || line}
+            </span>
           </div>
         );
       })}
@@ -989,9 +1403,10 @@ export function DiffView({ lines = [] }) {
   );
 }
 
-export function DiffStats({ additions = 0, deletions = 0 }) {
+export function DiffStats({ additions = 0, deletions = 0, style }) {
+  if (!additions && !deletions) return null;
   return (
-    <Row gap={8}>
+    <Row gap={8} style={style}>
       <Text size="small" style={{ color: "#34D399" }}>
         +{additions}
       </Text>
@@ -1002,8 +1417,114 @@ export function DiffStats({ additions = 0, deletions = 0 }) {
   );
 }
 
-export function computeDAGLayout() {
-  return { nodes: [], edges: [] };
+export function computeDAGLayout(options = {}) {
+  const {
+    nodes = [],
+    edges = [],
+    direction = "vertical",
+    nodeWidth = 160,
+    nodeHeight = 40,
+    rankGap = 64,
+    nodeGap = 48,
+    padding = 24,
+  } = options;
+  const ids = nodes.map((n) => n.id);
+  const incoming = new Map(ids.map((id) => [id, []]));
+  const outgoing = new Map(ids.map((id) => [id, []]));
+  for (const e of edges) {
+    if (outgoing.has(e.from) && incoming.has(e.to)) {
+      outgoing.get(e.from).push(e.to);
+      incoming.get(e.to).push(e.from);
+    }
+  }
+  const visiting = new Set();
+  const visited = new Set();
+  const back = new Set();
+  function dfs(id) {
+    visiting.add(id);
+    for (const to of outgoing.get(id) || []) {
+      const key = `${id}->${to}`;
+      if (visiting.has(to)) back.add(key);
+      else if (!visited.has(to)) dfs(to);
+    }
+    visiting.delete(id);
+    visited.add(id);
+  }
+  for (const id of ids) if (!visited.has(id)) dfs(id);
+
+  const rank = new Map(ids.map((id) => [id, 0]));
+  let changed = true;
+  let guard = 0;
+  while (changed && guard < ids.length + 2) {
+    changed = false;
+    guard += 1;
+    for (const e of edges) {
+      if (back.has(`${e.from}->${e.to}`)) continue;
+      const next = (rank.get(e.from) || 0) + 1;
+      if (next > (rank.get(e.to) || 0)) {
+        rank.set(e.to, next);
+        changed = true;
+      }
+    }
+  }
+  const byRank = new Map();
+  for (const id of ids) {
+    const r = rank.get(id) || 0;
+    if (!byRank.has(r)) byRank.set(r, []);
+    byRank.get(r).push(id);
+  }
+  const ranks = [...byRank.keys()].sort((a, b) => a - b);
+  const placed = [];
+  const pos = new Map();
+  for (const r of ranks) {
+    const row = byRank.get(r);
+    row.forEach((id, order) => {
+      const x =
+        direction === "vertical"
+          ? padding + order * (nodeWidth + nodeGap)
+          : padding + r * (nodeWidth + rankGap);
+      const y =
+        direction === "vertical"
+          ? padding + r * (nodeHeight + rankGap)
+          : padding + order * (nodeHeight + nodeGap);
+      const node = { id, x, y, rank: r, order };
+      placed.push(node);
+      pos.set(id, node);
+    });
+  }
+  const layoutEdges = edges.map((e) => {
+    const a = pos.get(e.from);
+    const b = pos.get(e.to);
+    if (!a || !b) {
+      return { ...e, sourceX: 0, sourceY: 0, targetX: 0, targetY: 0, isBackEdge: true };
+    }
+    const vertical = direction === "vertical";
+    return {
+      from: e.from,
+      to: e.to,
+      sourceX: vertical ? a.x + nodeWidth / 2 : a.x + nodeWidth,
+      sourceY: vertical ? a.y + nodeHeight : a.y + nodeHeight / 2,
+      targetX: vertical ? b.x + nodeWidth / 2 : b.x,
+      targetY: vertical ? b.y : b.y + nodeHeight / 2,
+      isBackEdge: back.has(`${e.from}->${e.to}`),
+    };
+  });
+  const rankBoxes = ranks.map((r) => {
+    const row = byRank.get(r).map((id) => pos.get(id));
+    const xs = row.map((n) => n.x);
+    const ys = row.map((n) => n.y);
+    return {
+      rank: r,
+      x: Math.min(...xs),
+      y: Math.min(...ys),
+      width: Math.max(...xs) - Math.min(...xs) + nodeWidth,
+      height: Math.max(...ys) - Math.min(...ys) + nodeHeight,
+      nodeIds: byRank.get(r),
+    };
+  });
+  const width = Math.max(nodeWidth, ...placed.map((n) => n.x + nodeWidth)) + padding;
+  const height = Math.max(nodeHeight, ...placed.map((n) => n.y + nodeHeight)) + padding;
+  return { nodes: placed, edges: layoutEdges, ranks: rankBoxes, direction, width, height };
 }
 
 export function CanvasThemeRoot({ kind = "dark", children }) {

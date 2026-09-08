@@ -29,6 +29,7 @@ export {
   Select,
   Checkbox,
   Toggle,
+  computeDAGLayout,
   BarChart,
   LineChart,
   PieChart,
