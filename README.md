@@ -4,7 +4,7 @@ CodeBuddy CN / VS Code 扩展：在**左侧边栏**预览 `.canvas.tsx`。
 
 ## 安装
 
-1. 打包：`npx @vscode/vsce package --allow-missing-repository`
+1. 从 [Releases](https://github.com/lnuxe/codebuddy-canvas-preview/releases) 下载 `canvas-preview-*.vsix`
 2. CodeBuddy CN：扩展面板 → `…` → 从 VSIX 安装
 3. 或命令行：
 
@@ -12,7 +12,7 @@ CodeBuddy CN / VS Code 扩展：在**左侧边栏**预览 `.canvas.tsx`。
 "/Applications/CodeBuddy CN.app/Contents/Resources/app/bin/code" --install-extension canvas-preview-0.1.2.vsix
 ```
 
-安装后执行 **重新加载窗口**。
+安装后执行 **重新加载窗口**。本地打包：`npm install && npx @vscode/vsce package`
 
 ## 用法
 
