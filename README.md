@@ -11,7 +11,7 @@ CodeBuddy CN / VS Code 扩展：在**左侧边栏**预览 `.canvas.tsx`，包含
 3. 或命令行：
 
 ```bash
-"/Applications/CodeBuddy CN.app/Contents/Resources/app/bin/code" --install-extension canvas-preview-0.3.0.vsix
+"/Applications/CodeBuddy CN.app/Contents/Resources/app/bin/code" --install-extension canvas-preview-0.4.0.vsix
 ```
 
 安装后执行 **重新加载窗口**。本地打包：`npm install && npx @vscode/vsce package`
@@ -23,7 +23,9 @@ CodeBuddy CN / VS Code 扩展：在**左侧边栏**预览 `.canvas.tsx`，包含
 - `Cmd+Option+C`
 - 图表示例：`examples/charts.canvas.tsx`
 
-侧边栏预览使用与 canvas SDK 相同的字号、间距、卡片和图表（nice scale、hover tooltip）。新文件建议写到 `{工作区}/canvases/` 或 `~/.codebuddy/canvases/`。
+交互状态写到画布旁边的 `*.canvas.data.json`。编辑 `.canvas.tsx` 时，Problems 面板会显示 `cursor/canvas` 类型诊断。
+
+新文件建议写到 `{工作区}/canvases/` 或 `~/.codebuddy/canvases/`。
 
 ## 共享（不需要自建服务器）
 
@@ -40,4 +42,4 @@ npm install
 
 修改 `runtime/canvas-sdk.jsx` 或 `extension.js` 后重载窗口。
 
-未做事项见 [TODO.md](TODO.md)。SDK 组件面已对齐；主题叠加、状态持久化、`useCanvasAction`、Diff 语法高亮仍未接。**在线协作链接**需要服务端，先不做。
+未做事项见 [TODO.md](TODO.md)。**在线协作链接**需要服务端，先不做。

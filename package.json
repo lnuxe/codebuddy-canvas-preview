@@ -2,7 +2,7 @@
   "name": "canvas-preview",
   "displayName": "Canvas 预览",
   "description": "在 CodeBuddy CN 侧边栏预览 .canvas.tsx 文件",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "lnuxe",
   "license": "MIT",
   "repository": {
@@ -163,8 +163,10 @@
     ]
   },
   "dependencies": {
+    "@types/react": "^19.2.8",
     "esbuild": "^0.28.2",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "typescript": "^5.9.2"
   }
 }

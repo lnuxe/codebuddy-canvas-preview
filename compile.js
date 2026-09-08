@@ -1,9 +1,7 @@
 const path = require("path");
 
-async function compileCanvas(filePath) {
-  const esbuild = require("esbuild");
-  const runtime = path.join(__dirname, "runtime", "canvas-sdk.jsx");
-  const wrapper = `
+function compileWrapper(filePath, runtime) {
+  return `
 import { createRoot } from "react-dom/client";
 import React from "react";
 import App from ${JSON.stringify(filePath)};
@@ -19,10 +17,14 @@ try {
   root.textContent = String(err && err.stack || err);
 }
 `;
+}
 
+async function compileCanvas(filePath) {
+  const esbuild = require("esbuild");
+  const runtime = path.join(__dirname, "runtime", "canvas-sdk.jsx");
   const result = await esbuild.build({
     stdin: {
-      contents: wrapper,
+      contents: compileWrapper(filePath, runtime),
       resolveDir: path.dirname(filePath),
       sourcefile: "canvas-preview-entry.tsx",
       loader: "tsx",
@@ -71,7 +73,28 @@ try {
   return js;
 }
 
-function previewHtml(scriptSrc, theme, cspSource) {
+function hostBootstrap(hostState) {
+  const json = JSON.stringify(hostState || { data: {} }).replace(/</g, "\\u003c");
+  return `<script>
+    window.__canvasPreviewHost = ${json};
+    try { window.__canvasPreviewVscode = acquireVsCodeApi(); } catch (e) {}
+  </script>`;
+}
+
+function pageStyle(theme) {
+  return `<style>
+  html, body, #root { margin: 0; padding: 0; min-height: 100%; width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden; }
+  *, *::before, *::after { box-sizing: border-box; }
+  body {
+    background: ${theme === "light" ? "#FCFCFC" : "#181818"};
+    color: ${theme === "light" ? "#141414" : "#F0F0F0"};
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+</style>`;
+}
+
+function previewHtml(scriptSrc, theme, cspSource, hostState) {
   const src = String(scriptSrc).replace(/"/g, "&quot;");
   const csp = cspSource
     ? `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} data:; style-src 'unsafe-inline'; script-src ${cspSource} 'unsafe-inline';" />`
@@ -81,16 +104,7 @@ function previewHtml(scriptSrc, theme, cspSource) {
 <head>
 <meta charset="UTF-8" />
 ${csp}
-<style>
-  html, body, #root { margin: 0; padding: 0; min-height: 100%; width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden; }
-  *, *::before, *::after { box-sizing: border-box; }
-  body {
-    background: ${theme === "light" ? "#FCFCFC" : "#181818"};
-    color: ${theme === "light" ? "#141414" : "#F0F0F0"};
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
-</style>
+${pageStyle(theme)}
 </head>
 <body>
   <div id="root"></div>
@@ -100,12 +114,13 @@ ${csp}
       if (el) el.textContent = String((e && e.stack) || m);
     };
   </script>
+  ${hostBootstrap(hostState)}
   <script src="${src}"></script>
 </body>
 </html>`;
 }
 
-function standaloneHtml(js, theme) {
+function standaloneHtml(js, theme, hostState) {
   const safe = String(js).replace(/</g, "\\u003c");
   return `<!DOCTYPE html>
 <html data-theme="${theme}">
@@ -113,19 +128,11 @@ function standaloneHtml(js, theme) {
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Canvas</title>
-<style>
-  html, body, #root { margin: 0; padding: 0; min-height: 100%; width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden; }
-  *, *::before, *::after { box-sizing: border-box; }
-  body {
-    background: ${theme === "light" ? "#FCFCFC" : "#181818"};
-    color: ${theme === "light" ? "#141414" : "#F0F0F0"};
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
-</style>
+${pageStyle(theme)}
 </head>
 <body>
   <div id="root"></div>
+  ${hostBootstrap(hostState)}
   <script>${safe}</script>
 </body>
 </html>`;

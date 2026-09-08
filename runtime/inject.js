@@ -54,4 +54,7 @@ export {
   chartPalette,
   colorPalette,
   usageColorSequence,
+  applyPrimaryColor,
+  applyWorkbenchSurfaces,
+  buildHostTokens,
 } from "./canvas-sdk.jsx";

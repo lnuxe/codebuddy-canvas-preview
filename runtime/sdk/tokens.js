@@ -209,10 +209,96 @@ export function mergeStyle(base, override) {
   return override ? { ...base, ...override } : base;
 }
 
-export function buildHostTheme(kind) {
+export function parseHexColor(input) {
+  if (typeof input !== "string") return undefined;
+  const n = input.trim().replace(/^#/, "");
+  if (!/^[0-9a-fA-F]+$/.test(n)) return undefined;
+  let r;
+  let g;
+  let b;
+  if (n.length === 3 || n.length === 4) {
+    r = n[0] + n[0];
+    g = n[1] + n[1];
+    b = n[2] + n[2];
+  } else if (n.length === 6 || n.length === 8) {
+    r = n.slice(0, 2);
+    g = n.slice(2, 4);
+    b = n.slice(4, 6);
+  } else {
+    return undefined;
+  }
+  return { r: Number.parseInt(r, 16), g: Number.parseInt(g, 16), b: Number.parseInt(b, 16) };
+}
+
+export function cssColorToHex(input) {
+  if (typeof input !== "string") return undefined;
+  const raw = input.trim();
+  if (!raw) return undefined;
+  if (raw.startsWith("#") && parseHexColor(raw)) {
+    const parsed = parseHexColor(raw);
+    const hex = (n) => n.toString(16).padStart(2, "0");
+    return `#${hex(parsed.r)}${hex(parsed.g)}${hex(parsed.b)}`;
+  }
+  const rgb = raw.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+  if (rgb) {
+    const hex = (n) => Number(n).toString(16).padStart(2, "0");
+    return `#${hex(rgb[1])}${hex(rgb[2])}${hex(rgb[3])}`;
+  }
+  return undefined;
+}
+
+export function applyWorkbenchSurfaces(palette, surfaces = {}) {
+  let next = palette;
+  if (surfaces.editorBackground && parseHexColor(surfaces.editorBackground)) {
+    next = {
+      ...next,
+      editor: surfaces.editorBackground,
+      chrome: surfaces.editorBackground,
+      elevated: surfaces.editorBackground,
+    };
+  }
+  if (surfaces.editorForeground && parseHexColor(surfaces.editorForeground)) {
+    next = { ...next, foreground: surfaces.editorForeground };
+  }
+  return next;
+}
+
+const BT601_RED_WEIGHT = 299;
+const BT601_GREEN_WEIGHT = 587;
+const BT601_BLUE_WEIGHT = 114;
+const ON_ACCENT_BRIGHTNESS_THRESHOLD = 150;
+
+export function applyPrimaryColor(palette, primary) {
+  const rgb = parseHexColor(primary);
+  if (!rgb) return palette;
+  const bright = (rgb.r * BT601_RED_WEIGHT + rgb.g * BT601_GREEN_WEIGHT + rgb.b * BT601_BLUE_WEIGHT) / 1000 > ON_ACCENT_BRIGHTNESS_THRESHOLD;
+  return {
+    ...palette,
+    accent: primary,
+    buttonBackground: primary,
+    buttonHoverBackground: primary,
+    strokeFocused: primary,
+    link: primary,
+    buttonForeground: bright ? ON_ACCENT_DARK : ON_ACCENT_LIGHT,
+  };
+}
+
+export function buildHostTokens(kind, overrides = {}) {
   const light = kind === "light" || kind === "hc-light";
-  const palette = light ? canvasPaletteLight : canvasPaletteDark;
-  const tokens = light ? canvasTokensLight : canvasTokens;
+  let palette = applyWorkbenchSurfaces(light ? canvasPaletteLight : canvasPaletteDark, {
+    editorBackground: overrides.editorBackground,
+    editorForeground: overrides.editorForeground,
+  });
+  if (overrides.primary) palette = applyPrimaryColor(palette, overrides.primary);
+  return {
+    tokens: buildTokens(palette, light ? categoryPaletteLight : categoryPaletteDark),
+    palette,
+  };
+}
+
+export function buildHostTheme(kind, overrides = {}) {
+  const light = kind === "light" || kind === "hc-light";
+  const { tokens, palette } = buildHostTokens(kind, overrides);
   return { kind: light ? "light" : "dark", tokens, palette, ...tokens };
 }
 

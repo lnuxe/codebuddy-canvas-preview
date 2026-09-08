@@ -4,6 +4,8 @@ const fs = require("fs");
 const os = require("os");
 const crypto = require("crypto");
 const { compileCanvas, previewHtml, standaloneHtml } = require("./compile");
+const { readSidecar, handleCanvasAction, queueSidecarWrite } = require("./host");
+const { checkCanvas } = require("./check");
 
 const VIEW_TYPE = "canvasPreview.panel";
 const SIDEBAR_VIEW = "canvasPreview.sidebar";
@@ -145,27 +147,81 @@ async function resolveTarget(uri) {
   return pickCanvasUri();
 }
 
-async function setWebviewHtml(webview, filePath) {
+async function setWebviewHtml(webview, compilePath, persistPath) {
+  const sourcePath = persistPath || compilePath;
   try {
-    const js = await compileCanvas(filePath);
+    const js = await compileCanvas(compilePath);
     const dir = cacheDir();
     const jsPath = path.join(
       dir,
-      crypto.createHash("sha1").update(filePath).digest("hex").slice(0, 16) + ".js"
+      crypto.createHash("sha1").update(sourcePath).digest("hex").slice(0, 16) + ".js"
     );
     fs.writeFileSync(jsPath, js, "utf8");
     webview.options = {
       enableScripts: true,
       localResourceRoots: [vscode.Uri.file(dir), vscode.Uri.file(__dirname)],
     };
+    bindWebview(webview, sourcePath);
     const src = webview.asWebviewUri(vscode.Uri.file(jsPath)).toString();
-    webview.html = previewHtml(src, themeKind(), webview.cspSource);
+    webview.html = previewHtml(src, themeKind(), webview.cspSource, {
+      canvasPath: sourcePath,
+      data: readSidecar(sourcePath),
+      theme: { kind: themeKind() },
+    });
   } catch (err) {
     const message = err && err.errors
       ? err.errors.map((e) => e.text || e.message || String(e)).join("\n")
       : (err && err.stack) || String(err);
     webview.html = errorHtml(message);
   }
+}
+
+const boundWebviews = new WeakSet();
+const webviewPaths = new WeakMap();
+const liveWebviews = new Set();
+
+function bindWebview(webview, filePath) {
+  webviewPaths.set(webview, filePath);
+  liveWebviews.add(webview);
+  if (boundWebviews.has(webview)) return;
+  boundWebviews.add(webview);
+  webview.onDidReceiveMessage(async (msg) => {
+    const target = webviewPaths.get(webview);
+    if (!target || !msg) return;
+    if (msg.type === "canvasStateSet") queueSidecarWrite(target, msg.key, msg.value);
+    if (msg.type === "canvasAction") await handleCanvasAction(target, msg.action);
+  });
+}
+
+function broadcastTheme() {
+  const theme = { kind: themeKind() };
+  for (const webview of liveWebviews) {
+    try {
+      webview.postMessage({ type: "canvasTheme", theme });
+    } catch {
+      liveWebviews.delete(webview);
+    }
+  }
+}
+
+function applyCanvasDiagnostics(collection, filePath, sourceText) {
+  const uri = vscode.Uri.file(filePath);
+  const result = checkCanvas(filePath, sourceText);
+  collection.set(
+    uri,
+    (result.diagnostics || []).map((d) => {
+      const range = new vscode.Range(d.startLine, d.startCharacter, d.endLine, d.endCharacter);
+      const severity =
+        d.severity === "error"
+          ? vscode.DiagnosticSeverity.Error
+          : d.severity === "warning"
+            ? vscode.DiagnosticSeverity.Warning
+            : vscode.DiagnosticSeverity.Information;
+      const item = new vscode.Diagnostic(range, d.message, severity);
+      item.source = "Canvas";
+      return item;
+    })
+  );
 }
 
 class SidebarPreviewProvider {
@@ -194,13 +250,13 @@ class SidebarPreviewProvider {
     });
   }
 
-  async showPath(filePath) {
-    this.currentPath = filePath;
+  async showPath(filePath, persistPath) {
+    this.currentPath = persistPath || filePath;
     await vscode.commands.executeCommand("workbench.view.extension.canvasPreview");
     await vscode.commands.executeCommand("canvasPreview.sidebar.focus");
     if (!this.view) return;
     this.view.show?.(true);
-    await setWebviewHtml(this.view.webview, filePath);
+    await setWebviewHtml(this.view.webview, filePath, persistPath || filePath);
   }
 }
 
@@ -253,7 +309,10 @@ function openEditorPanel(uri, side) {
     }
   );
   panels.set(filePath, panel);
-  panel.onDidDispose(() => panels.delete(filePath));
+  panel.onDidDispose(() => {
+    liveWebviews.delete(panel.webview);
+    panels.delete(filePath);
+  });
   setWebviewHtml(panel.webview, filePath);
   return panel;
 }
@@ -261,6 +320,20 @@ function openEditorPanel(uri, side) {
 function activate(context) {
   const sidebar = new SidebarPreviewProvider();
   const files = new CanvasFileProvider();
+  const diagnostics = vscode.languages.createDiagnosticCollection("canvasPreview");
+  const typecheckTimers = new Map();
+
+  function scheduleTypecheck(doc) {
+    if (!isCanvasFile(doc.fileName)) return;
+    if (typecheckTimers.has(doc.fileName)) clearTimeout(typecheckTimers.get(doc.fileName));
+    typecheckTimers.set(
+      doc.fileName,
+      setTimeout(() => {
+        applyCanvasDiagnostics(diagnostics, doc.fileName, doc.getText());
+        typecheckTimers.delete(doc.fileName);
+      }, 300)
+    );
+  }
 
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   status.text = "$(layout-sidebar-left) Canvas 预览";
@@ -273,9 +346,11 @@ function activate(context) {
   context.subscriptions.push(
     status,
     watcher,
+    diagnostics,
     watcher.onDidCreate(() => files.refresh()),
     watcher.onDidDelete(() => files.refresh()),
     watcher.onDidChange(() => files.refresh()),
+    vscode.window.onDidChangeActiveColorTheme(() => broadcastTheme()),
     vscode.window.registerWebviewViewProvider(SIDEBAR_VIEW, sidebar, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
@@ -305,7 +380,11 @@ function activate(context) {
       const target = await resolveTarget(uri);
       if (!target) return;
       const js = await compileCanvas(target.fsPath);
-      const html = standaloneHtml(js, themeKind());
+      const html = standaloneHtml(js, themeKind(), {
+        canvasPath: target.fsPath,
+        data: readSidecar(target.fsPath),
+        theme: { kind: themeKind() },
+      });
       const defaultName = path.basename(target.fsPath, ".tsx") + ".html";
       const save = await vscode.window.showSaveDialog({
         defaultUri: vscode.Uri.file(path.join(path.dirname(target.fsPath), defaultName)),
@@ -325,17 +404,28 @@ function activate(context) {
       const target = await resolveTarget(uri);
       if (!target) return;
       const js = await compileCanvas(target.fsPath);
-      await vscode.env.clipboard.writeText(standaloneHtml(js, themeKind()));
+      await vscode.env.clipboard.writeText(
+        standaloneHtml(js, themeKind(), {
+          canvasPath: target.fsPath,
+          data: readSidecar(target.fsPath),
+          theme: { kind: themeKind() },
+        })
+      );
       vscode.window.showInformationMessage("已复制完整 HTML。可贴到仓库、对象存储或任意静态托管。");
     }),
     vscode.workspace.onDidSaveTextDocument((doc) => {
       if (!isCanvasFile(doc.fileName)) return;
+      applyCanvasDiagnostics(diagnostics, doc.fileName, doc.getText());
       if (sidebar.currentPath === doc.fileName) sidebar.showPath(doc.fileName);
       const panel = panels.get(doc.fileName);
       if (panel) setWebviewHtml(panel.webview, doc.fileName);
     }),
+    vscode.workspace.onDidOpenTextDocument((doc) => {
+      if (isCanvasFile(doc.fileName)) applyCanvasDiagnostics(diagnostics, doc.fileName, doc.getText());
+    }),
     vscode.workspace.onDidChangeTextDocument((e) => {
       if (!isCanvasFile(e.document.fileName)) return;
+      scheduleTypecheck(e.document);
       const shouldUpdateSidebar = sidebar.currentPath === e.document.fileName;
       const panel = panels.get(e.document.fileName);
       if (!shouldUpdateSidebar && !panel) return;
@@ -352,8 +442,8 @@ function activate(context) {
                 return tmp;
               })()
             : e.document.fileName;
-          if (shouldUpdateSidebar) sidebar.showPath(source);
-          if (panel) setWebviewHtml(panel.webview, source);
+          if (shouldUpdateSidebar) sidebar.showPath(source, e.document.fileName);
+          if (panel) setWebviewHtml(panel.webview, source, e.document.fileName);
         }, 250)
       );
     }),
@@ -367,6 +457,7 @@ function activate(context) {
           };
           panels.set(document.fileName, webviewPanel);
           webviewPanel.onDidDispose(() => {
+            liveWebviews.delete(webviewPanel.webview);
             if (panels.get(document.fileName) === webviewPanel) {
               panels.delete(document.fileName);
             }
@@ -377,6 +468,10 @@ function activate(context) {
       { webviewOptions: { retainContextWhenHidden: true } }
     )
   );
+
+  for (const doc of vscode.workspace.textDocuments) {
+    if (isCanvasFile(doc.fileName)) applyCanvasDiagnostics(diagnostics, doc.fileName, doc.getText());
+  }
 }
 
 function deactivate() {}

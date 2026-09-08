@@ -28,8 +28,12 @@ import {
   canvasPaletteLight,
   canvasTokens,
   canvasTokensLight,
+  applyPrimaryColor,
+  applyWorkbenchSurfaces,
+  buildHostTokens,
 } from "./sdk/tokens.js";
 import { BarChart, LineChart, PieChart } from "./sdk/charts.jsx";
+import { normalizeLanguage, tokenizeLine } from "./sdk/highlight.js";
 import { CanvasThemeRoot, useCanvasAction, useCanvasState, useHostTheme } from "./sdk/theme.jsx";
 
 export {
@@ -53,6 +57,9 @@ export {
   colorPalette,
   mergeStyle,
   usageColorSequence,
+  applyPrimaryColor,
+  applyWorkbenchSurfaces,
+  buildHostTokens,
 };
 export { BarChart, LineChart, PieChart };
 export { CanvasThemeRoot, useCanvasAction, useCanvasState, useHostTheme };
@@ -285,7 +292,8 @@ export function Text({ children, tone = "primary", size = "body", as, weight = "
           ...(trunc === "start" ? { direction: "rtl", textAlign: "left" } : {}),
         }
       : undefined;
-  const body = trunc === "start" ? <bdi>{children}</bdi> : children;
+  const parsed = renderInlineMarkdown(children);
+  const body = trunc === "start" ? <bdi>{parsed}</bdi> : parsed;
   const css = mergeStyle(
     {
       margin: 0,
@@ -373,6 +381,34 @@ export function Link({ children, href, style }) {
       {children}
     </a>
   );
+}
+
+function renderInlineMarkdown(node, keyPrefix = "md") {
+  if (node == null || typeof node === "boolean") return node;
+  if (Array.isArray(node)) {
+    return node.map((child, i) => <React.Fragment key={`${keyPrefix}-${i}`}>{renderInlineMarkdown(child, `${keyPrefix}-${i}`)}</React.Fragment>);
+  }
+  if (typeof node !== "string") return node;
+  const re = /(`[^`]+`)|(\[[^\]]+\]\([^)\s]+(?:\s+"[^"]*")?\))/g;
+  const out = [];
+  let last = 0;
+  let m;
+  let i = 0;
+  while ((m = re.exec(node))) {
+    if (m.index > last) out.push(node.slice(last, m.index));
+    const token = m[0];
+    if (token.startsWith("`")) {
+      out.push(<Code key={`${keyPrefix}-c-${i}`}>{token.slice(1, -1)}</Code>);
+    } else {
+      const link = token.match(/^\[([^\]]+)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)$/);
+      if (link) out.push(<Link key={`${keyPrefix}-l-${i}`} href={link[2]}>{link[1]}</Link>);
+      else out.push(token);
+    }
+    i += 1;
+    last = m.index + token.length;
+  }
+  if (last < node.length) out.push(node.slice(last));
+  return out.length === 1 ? out[0] : out;
 }
 
 export function CanvasChevron({ expanded }) {
@@ -624,45 +660,35 @@ export function Stat({ value, label, tone, style }) {
 }
 
 function CalloutToneIcon({ tone, color }) {
+  const CALLOUT_ICON_VIEWBOX = 300;
   const style = { display: "block", flexShrink: 0, color };
   if (tone === "neutral") {
     return (
-      <svg width={12} height={12} viewBox="0 0 12 12" aria-hidden style={style}>
-        <circle cx={6} cy={6} r={5} fill="currentColor" />
+      <svg width={12} height={12} viewBox={`0 0 ${CALLOUT_ICON_VIEWBOX} ${CALLOUT_ICON_VIEWBOX}`} aria-hidden style={style}>
+        <circle cx={150} cy={150} r={132} fill="currentColor" />
       </svg>
     );
   }
-  if (tone === "success") {
-    return (
-      <svg width={12} height={12} viewBox="0 0 12 12" fill="none" aria-hidden style={style}>
-        <circle cx={6} cy={6} r={5} stroke="currentColor" strokeWidth={1.2} />
-        <path d="M3.8 6.1 5.3 7.6 8.2 4.5" stroke="currentColor" strokeWidth={1.2} strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    );
-  }
-  if (tone === "warning") {
-    return (
-      <svg width={12} height={12} viewBox="0 0 12 12" fill="none" aria-hidden style={style}>
-        <path d="M6 1.6 11 10.4H1L6 1.6Z" stroke="currentColor" strokeWidth={1.2} strokeLinejoin="round" />
-        <path d="M6 5v2.4" stroke="currentColor" strokeWidth={1.2} strokeLinecap="round" />
-        <circle cx={6} cy={9} r={0.6} fill="currentColor" />
-      </svg>
-    );
-  }
-  if (tone === "danger") {
-    return (
-      <svg width={12} height={12} viewBox="0 0 12 12" fill="none" aria-hidden style={style}>
-        <circle cx={6} cy={6} r={5} stroke="currentColor" strokeWidth={1.2} />
-        <path d="M6 3.4v3.2" stroke="currentColor" strokeWidth={1.2} strokeLinecap="round" />
-        <circle cx={6} cy={8.5} r={0.6} fill="currentColor" />
-      </svg>
-    );
-  }
+  const glyph =
+    tone === "success"
+      ? "circles-check"
+      : tone === "warning"
+        ? "warning"
+        : tone === "danger"
+          ? "exclamation-circle"
+          : "info";
+  const paths = {
+    info: "M150 30a120 120 0 1 1 0 240a120 120 0 0 1 0-240zm0 84a12 12 0 0 0-12 12v47a12 12 0 0 0 24 0v-47a12 12 0 0 0-12-12zm0 94a13 13 0 1 0 0-26a13 13 0 0 0 0 26z",
+    warning:
+      "M150 36c12 0 23 7 28 18l104 182c5 9 4 20-2 28s-16 13-26 13H46c-10 0-20-5-26-13s-7-19-2-28L122 54c5-11 16-18 28-18zm0 64a13 13 0 0 0-13 13v47a13 13 0 0 0 26 0v-47a13 13 0 0 0-13-13zm0 96a13 13 0 1 0 0-26a13 13 0 0 0 0 26z",
+    "circles-check":
+      "M117 30a87 87 0 1 1 0 174a87 87 0 0 1 0-174zm29 78l-40 40-22-22-18 18 40 40 58-58zM210 128c4-2 9-1 12 3c16 27 12 61-10 84s-57 32-86 20c-5-2-8 0-10 4s0 9 4 11c33 19 75 12 103-16s35-70 16-103c-2-5-8-7-12-4s-7 8-5 12z",
+    "exclamation-circle":
+      "M150 30a120 120 0 1 1 0 240a120 120 0 0 1 0-240zm0 64a12 12 0 0 0-12 12v66a12 12 0 0 0 24 0V106a12 12 0 0 0-12-12zm0 121a13 13 0 1 0 0-26a13 13 0 0 0 0 26z",
+  };
   return (
-    <svg width={12} height={12} viewBox="0 0 12 12" fill="none" aria-hidden style={style}>
-      <circle cx={6} cy={6} r={5} stroke="currentColor" strokeWidth={1.2} />
-      <path d="M6 5.4V8.4" stroke="currentColor" strokeWidth={1.2} strokeLinecap="round" />
-      <circle cx={6} cy={3.8} r={0.6} fill="currentColor" />
+    <svg width={12} height={12} viewBox={`0 0 ${CALLOUT_ICON_VIEWBOX} ${CALLOUT_ICON_VIEWBOX}`} aria-hidden style={style}>
+      <path fill="currentColor" fillRule="evenodd" d={paths[glyph]} />
     </svg>
   );
 }
@@ -1279,7 +1305,9 @@ export function DiffView({
   showAccentStrip = true,
   style,
 }) {
-  const { tokens } = useHostTheme();
+  const theme = useHostTheme();
+  const { tokens, kind } = theme;
+  const lang = normalizeLanguage(language, filePath);
   return (
     <div
       style={mergeStyle(
@@ -1303,12 +1331,13 @@ export function DiffView({
             (String(raw).startsWith("+") ? "added" : String(raw).startsWith("-") ? "removed" : "unchanged");
           const added = t === "added" || t === "add" || t === "inserted";
           const removed = t === "removed" || t === "del" || t === "deleted";
-          const kind = added ? "added" : removed ? "removed" : "unchanged";
-          const bg = kind === "added" ? tokens.diff.insertedLine : kind === "removed" ? tokens.diff.removedLine : "transparent";
-          const strip = kind === "added" ? tokens.diff.stripAdded : kind === "removed" ? tokens.diff.stripRemoved : "transparent";
-          const numColor = coloredLineNumbers ? (kind === "added" ? DIFF_GREEN : kind === "removed" ? DIFF_RED : tokens.text.tertiary) : tokens.text.tertiary;
+          const kindLine = added ? "added" : removed ? "removed" : "unchanged";
+          const bg = kindLine === "added" ? tokens.diff.insertedLine : kindLine === "removed" ? tokens.diff.removedLine : "transparent";
+          const strip = kindLine === "added" ? tokens.diff.stripAdded : kindLine === "removed" ? tokens.diff.stripRemoved : "transparent";
+          const numColor = coloredLineNumbers ? (kindLine === "added" ? DIFF_GREEN : kindLine === "removed" ? DIFF_RED : tokens.text.tertiary) : tokens.text.tertiary;
           const content = typeof line === "object" ? raw : raw.replace(/^[-+ ]/, "");
           const lineNumber = typeof line === "object" ? line.lineNumber : undefined;
+          const tokensInLine = lang && content ? tokenizeLine(content, lang, kind) : [{ content, color: tokens.text.primary, col: 0 }];
           return (
             <div key={i} style={{ display: "flex", minWidth: "100%", minHeight: 20, background: bg }}>
               {showAccentStrip ? <div style={{ width: 3, flexShrink: 0, background: strip }} /> : null}
@@ -1319,7 +1348,13 @@ export function DiffView({
                   </span>
                 </div>
               ) : null}
-              <div style={{ flex: 1, paddingLeft: 8, whiteSpace: "pre", overflow: "visible", color: tokens.text.primary }}>{content}</div>
+              <div style={{ flex: 1, paddingLeft: 8, whiteSpace: "pre", overflow: "visible", color: tokens.text.primary }}>
+                {tokensInLine.map((tok) => (
+                  <span key={tok.col} style={{ color: tok.color }}>
+                    {tok.content}
+                  </span>
+                ))}
+              </div>
             </div>
           );
         })}
